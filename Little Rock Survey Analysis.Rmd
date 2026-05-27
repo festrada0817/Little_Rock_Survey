@@ -221,47 +221,87 @@ library(dplyr)
 library(ggplot2)
 library(plotly)
 
+rm(list = intersect(c("household_size_plot_data", "household_size_plot"), ls()))
+
 household_size_plot_data <- survey_data %>%
   filter(!is.na(`How many people live in your household (including yourself)?`)) %>%
   mutate(
-    household_size = as.character(`How many people live in your household (including yourself)?`)
+    household_size = as.character(`How many people live in your household (including yourself)?`),
+    household_size = trimws(household_size)
   ) %>%
   filter(household_size != "") %>%
-  count(household_size) %>%
+  count(household_size, name = "n") %>%
   mutate(
-    fill_color = ifelse(household_size == "2", "#f9c610", "#00173d"),
-    label_y = n + 2
-  )
+    household_size = factor(household_size, levels = household_size[order(as.numeric(household_size))]),
+    fill_group = ifelse(n == max(n), "Highest", "Other"),
+    fill_color = ifelse(n == max(n), "#f9c610", "#00173d"),
+    label_y = n + 5
+  ) %>%
+  arrange(as.numeric(as.character(household_size)))
 
 household_size_plot <- ggplot(
   household_size_plot_data,
   aes(
     x = household_size,
     y = n,
+    fill = fill_group,
     text = paste0(
       "Household size: ", household_size,
       "<br>Number of responses: ", n
     )
   )
 ) +
-  geom_col(aes(fill = I(fill_color))) +
-  geom_text(aes(y = label_y, label = n), fontface = "bold") +
-  labs(
-    title = "Household Size of Respondents",
-    x = "Number of People in Household",
-    y = "Number of Respondents"
+  geom_col(show.legend = FALSE) +
+  geom_text(
+    aes(y = label_y, label = n),
+    fontface = "bold",
+    color = "#555454"
   ) +
-  scale_y_continuous(expand = expansion(mult = c(0, 0.08))) +
+  scale_fill_manual(values = c("Highest" = "#f9c610", "Other" = "#00173d")) +
+  labs(
+    title = "HOUSEHOLD SIZE OF RESPONDENTS",
+    x = "Number of People in Household",
+    y = "Number of Responses"
+  ) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.10))) +
   theme_minimal() +
   theme(
+    legend.position = "none",
     plot.title = element_text(face = "bold"),
     axis.title = element_text(face = "bold"),
-    panel.grid = element_blank(),
-    axis.line = element_line(color = "black"),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.line.x = element_line(color = "black"),
+    axis.line.y = element_line(color = "black"),
     axis.ticks = element_line(color = "black")
   )
 
 ggplotly(household_size_plot, tooltip = "text") %>%
+  layout(
+    title = list(
+      text = "HOUSEHOLD SIZE OF RESPONDENTS",
+      font = list(
+        family = "Bebas Neue, Montserrat, sans-serif",
+        color = "#00173d",
+        size = 24
+      ),
+      x = 0.5
+    ),
+    font = list(
+      family = "Montserrat, sans-serif",
+      color = "#555454",
+      size = 11
+    ),
+    xaxis = list(
+      title = "Number of People in Household"
+    ),
+    yaxis = list(
+      title = "Number of Responses"
+    ),
+    paper_bgcolor = "#ffffff",
+    plot_bgcolor = "#ffffff",
+    showlegend = FALSE
+  ) %>%
   config(displayModeBar = FALSE)
 ```
 
@@ -273,9 +313,16 @@ The survey captured a total of 259 valid responses regarding household income. T
 ```{r Income_Plot,  echo=FALSE, message=FALSE, warning=FALSE}
 rm(list = intersect(c("household_income_plot_data", "household_income_plot"), ls()))
 
-income_plot_data_new <- survey_data %>%
+household_income_plot_data <- survey_data %>%
   filter(!is.na(`What is your approximate total household income?`)) %>%
-  transmute(income_raw = as.character(`What is your approximate total household income?`)) %>%
+  transmute(
+    income_raw = as.character(`What is your approximate total household income?`)
+  ) %>%
+  mutate(
+    income_raw = trimws(income_raw),
+    income_raw = dplyr::na_if(income_raw, "")
+  ) %>%
+  filter(!is.na(income_raw)) %>%
   count(income_raw, name = "n") %>%
   mutate(
     income_label = dplyr::recode(
@@ -298,12 +345,12 @@ income_plot_data_new <- survey_data %>%
         "Prefer not to say"
       )
     ),
-    label_y = n + 2
+    label_y = n + 5
   ) %>%
   arrange(income_label)
 
-income_plot_new <- ggplot(
-  income_plot_data_new,
+household_income_plot <- ggplot(
+  household_income_plot_data,
   aes(
     x = income_label,
     y = n,
@@ -313,25 +360,57 @@ income_plot_new <- ggplot(
     )
   )
 ) +
-  geom_col(fill = "#00173d") +
-  geom_text(aes(y = label_y, label = n), fontface = "bold") +
-  labs(
-    title = "Approximate Total Household Income of Respondents",
-    x = "Income Range",
-    y = "Number of Respondents"
+  geom_col(fill = "#00173d", show.legend = FALSE) +
+  geom_text(
+    aes(y = label_y, label = n),
+    fontface = "bold",
+    color = "#555454"
   ) +
-  scale_y_continuous(expand = expansion(mult = c(0, 0.08))) +
+  labs(
+    title = "HOUSEHOLD INCOME OF RESPONDENTS",
+    x = "Income Range",
+    y = "Number of Responses"
+  ) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.10))) +
   theme_minimal() +
   theme(
+    legend.position = "none",
     plot.title = element_text(face = "bold"),
     axis.title = element_text(face = "bold"),
-    panel.grid = element_blank(),
-    axis.line = element_line(color = "black"),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.line.x = element_line(color = "black"),
+    axis.line.y = element_line(color = "black"),
     axis.ticks = element_line(color = "black"),
     axis.text.x = element_text(angle = 20, hjust = 1)
   )
 
-ggplotly(income_plot_new, tooltip = "text") %>%
+ggplotly(household_income_plot, tooltip = "text") %>%
+  layout(
+    title = list(
+      text = "HOUSEHOLD INCOME OF RESPONDENTS",
+      font = list(
+        family = "Bebas Neue, Montserrat, sans-serif",
+        color = "#00173d",
+        size = 24
+      ),
+      x = 0.5
+    ),
+    font = list(
+      family = "Montserrat, sans-serif",
+      color = "#555454",
+      size = 11
+    ),
+    xaxis = list(
+      title = "Income Range"
+    ),
+    yaxis = list(
+      title = "Number of Responses"
+    ),
+    paper_bgcolor = "#ffffff",
+    plot_bgcolor = "#ffffff",
+    showlegend = FALSE
+  ) %>%
   config(displayModeBar = FALSE)
 ```
 
@@ -340,89 +419,188 @@ The racial and ethnic composition of survey respondents reflects Little Rock's d
 ```{r Race_Plot,  echo=FALSE, message=FALSE, warning=FALSE}
 library(dplyr)
 library(stringr)
+library(tidyr)
 library(ggplot2)
 library(plotly)
 
-race_counts <- survey_data %>%
-  mutate(
-    race = str_trim(`Which of the following best describes your race or ethnicity? (Select all that apply)`),
-    race = str_remove(race, ";$")
-  ) %>%
-  filter(!is.na(race), race != "", race != "(Blanks)") %>%
-  count(race, name = "responses", sort = TRUE) %>%
-  mutate(race = factor(race, levels = rev(race)))
+rm(list = intersect(c("race_counts", "race_count_plot"), ls()))
 
-race_count <- ggplot(
+race_counts <- survey_data %>%
+  transmute(
+    race_raw = as.character(`Which of the following best describes your race or ethnicity? (Select all that apply)`)
+  ) %>%
+  mutate(
+    race_raw = str_trim(race_raw),
+    race_raw = str_remove(race_raw, ";$")
+  ) %>%
+  filter(!is.na(race_raw), race_raw != "", race_raw != "(Blanks)") %>%
+  separate_rows(race_raw, sep = ";") %>%
+  mutate(
+    race_raw = str_trim(race_raw)
+  ) %>%
+  filter(race_raw != "") %>%
+  count(race_raw, name = "responses", sort = FALSE) %>%
+  arrange(responses) %>%
+  mutate(
+    race_label = str_wrap(race_raw, width = 32),
+    race_label = factor(race_label, levels = race_label),
+    label_x = responses + 5
+  )
+
+race_count_plot <- ggplot(
   race_counts,
   aes(
-    x = race,
-    y = responses,
-    text = paste0(race, ": ", responses)
+    x = responses,
+    y = race_label,
+    text = paste0(
+      "Race/ethnicity: ", race_raw,
+      "<br>Number of selections: ", responses
+    )
   )
 ) +
-  geom_col(fill = "#00173d", width = 0.8) +
-  coord_flip() +
-  scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +
-  labs(
-    title = "Race/Ethnicity of Respondents",
-    subtitle = "(Respondents could select multiple categories)",
-    x = NULL,
-    y = "Number of Respondents"
+  geom_col(fill = "#00173d", show.legend = FALSE) +
+  geom_text(
+    aes(x = label_x, label = responses),
+    hjust = 0,
+    fontface = "bold",
+    color = "#555454"
   ) +
+  labs(
+    title = "RACE/ETHNICITY OF RESPONDENTS",
+    x = "Number of Selections",
+    y = NULL
+  ) +
+  scale_x_continuous(expand = expansion(mult = c(0, 0.12))) +
   theme_minimal() +
   theme(
+    legend.position = "none",
     plot.title = element_text(face = "bold"),
-    plot.subtitle = element_text(size = 10, color = "gray40"),
     axis.title = element_text(face = "bold"),
-    panel.grid = element_blank(),
-    axis.line = element_line(color = "black"),
-    axis.ticks = element_line(color = "black")
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.line.x = element_line(color = "black"),
+    axis.ticks.x = element_line(color = "black")
   )
 
-ggplotly(race_count, tooltip = "text")
+ggplotly(race_count_plot, tooltip = "text") %>%
+  layout(
+    title = list(
+      text = "RACE/ETHNICITY OF RESPONDENTS",
+      font = list(
+        family = "Bebas Neue, Montserrat, sans-serif",
+        color = "#00173d",
+        size = 24
+      ),
+      x = 0.5
+    ),
+    font = list(
+      family = "Montserrat, sans-serif",
+      color = "#555454",
+      size = 11
+    ),
+    xaxis = list(
+      title = "Number of Selections"
+    ),
+    yaxis = list(
+      title = ""
+    ),
+    paper_bgcolor = "#ffffff",
+    plot_bgcolor = "#ffffff",
+    showlegend = FALSE,
+    margin = list(l = 180, r = 80, t = 80, b = 60)
+  ) %>%
+  config(displayModeBar = FALSE)
 ```
 
 ### Which best describes your current housing situation?
 The overwhelming majority of survey respondents are homeowners, with **199 respondents (77%)** reporting that they **own** their homes. This was followed by **47 renters (18%)**, while a small number of respondents reported living with family or friends without paying rent (7 respondents, 3%). Additionally, 5 respondents preferred not to disclose their housing situation, and **1 respondent** reported **experiencing homelessness**.
 ```{r Housing_Sit, echo=FALSE, message=FALSE, warning=FALSE}
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(plotly)
+
+rm(list = intersect(c("housing_situation_counts", "housing_plot"), ls()))
+
 housing_situation_counts <- survey_data %>%
+  transmute(
+    housing_situation = as.character(`Which best describes your current housing situation?`)
+  ) %>%
   mutate(
-    housing_situation = str_trim(`Which best describes your current housing situation?`)
+    housing_situation = str_trim(housing_situation)
   ) %>%
   filter(!is.na(housing_situation), housing_situation != "", housing_situation != "(Blanks)") %>%
-  count(housing_situation, name = "responses", sort = TRUE) %>%
+  count(housing_situation, name = "responses", sort = FALSE) %>%
+  arrange(responses) %>%
   mutate(
-    housing_situation = factor(housing_situation, levels = rev(housing_situation)),
-    label_y = responses + 8
+    housing_label = str_wrap(housing_situation, width = 32),
+    housing_label = factor(housing_label, levels = housing_label),
+    label_x = responses + 5
   )
 
 housing_plot <- ggplot(
   housing_situation_counts,
   aes(
-    x = housing_situation,
-    y = responses,
-    text = paste0(housing_situation, ": ", responses)
+    x = responses,
+    y = housing_label,
+    text = paste0(
+      "Housing situation: ", housing_situation,
+      "<br>Number of responses: ", responses
+    )
   )
 ) +
-  geom_col(fill = "#00173d", width = 0.8) +
-  geom_text(aes(y = label_y, label = responses), fontface = "bold", hjust = 0, size = 3.5) +
-  coord_flip() +
-  scale_y_continuous(expand = expansion(mult = c(0, 0.10))) +
-  labs(
-    title = "Current Housing Situation of Respondents",
-    x = NULL,
-    y = "Number of Respondents"
+  geom_col(fill = "#00173d", show.legend = FALSE) +
+  geom_text(
+    aes(x = label_x, label = responses),
+    hjust = 0,
+    fontface = "bold",
+    color = "#555454"
   ) +
+  labs(
+    title = "CURRENT HOUSING SITUATION OF RESPONDENTS",
+    x = "Number of Responses",
+    y = NULL
+  ) +
+  scale_x_continuous(expand = expansion(mult = c(0, 0.12))) +
   theme_minimal() +
   theme(
+    legend.position = "none",
     plot.title = element_text(face = "bold"),
     axis.title = element_text(face = "bold"),
-    panel.grid = element_blank(),
-    axis.line = element_line(color = "black"),
-    axis.ticks = element_line(color = "black")
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.line.x = element_line(color = "black"),
+    axis.ticks.x = element_line(color = "black")
   )
 
-ggplotly(housing_plot, tooltip = "text")
+ggplotly(housing_plot, tooltip = "text") %>%
+  layout(
+    title = list(
+      text = "CURRENT HOUSING SITUATION OF RESPONDENTS",
+      font = list(
+        family = "Bebas Neue, Montserrat, sans-serif",
+        color = "#00173d",
+        size = 24
+      ),
+      x = 0.5
+    ),
+    font = list(
+      family = "Montserrat, sans-serif",
+      color = "#555454",
+      size = 11
+    ),
+    xaxis = list(
+      title = "Number of Responses"
+    ),
+    yaxis = list(
+      title = ""
+    ),
+    paper_bgcolor = "#ffffff",
+    plot_bgcolor = "#ffffff",
+    showlegend = FALSE,
+    margin = list(l = 180, r = 80, t = 80, b = 60)
+  ) %>%
+  config(displayModeBar = FALSE)
 ```
 
 ## Housing Activities Rating
@@ -879,3 +1057,564 @@ Survey findings align with documented reductions in homeless housing capacity in
 ![](coc_2021_summary.png)
 
 ![](coc_2024_summary.png)
+
+## Special Population Housing Need
+Survey respondents identified substantial need across all housing and homelessness-related interventions. Emergency shelters for persons experiencing homelessness received the highest urgency ratings, with **195 respondents indicating high need** and an **additional 38 rating it as medium need**. **Rental assistance** for **homeless households also drew strong demand**, with **178 high-need responses**. **Permanent supportive housing** for persons with **mental disabilities (184 high-need responses)** and housing designed for **persons with disabilities (198 high-need)** reflect consistent concern for specialized housing options serving vulnerable populations. Youth shelters, senior housing, and transitional housing each received more than 135 high-need ratings, underscoring widespread recognition that housing insecurity spans multiple demographic groups and service categories.
+```{r Special_Population_Table}
+housing_needs_questions <- c(
+  "Shelters for youth experiencing homelessness",
+  "Emergency shelters for persons who are experiencing homelessness",
+  "Rental assistance for homeless households",
+  "Permanent supportive housing, such as subsidized housing that offers services for persons with mental disabilities",
+  "Transitional housing",
+  "Housing designed for persons with disabilities",
+  "Senior housing, such as nursing homes or assisted living facilities"
+)
+
+housing_needs_summary <- survey_data %>%
+  select(all_of(housing_needs_questions)) %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = "Question",
+    values_to = "Response"
+  ) %>%
+  mutate(
+    Response = as.character(Response),
+    Response = trimws(Response),
+    Response = case_when(
+      is.na(Response) | Response == "" | Response == "NA" ~ "Missing",
+      grepl("Don.?t Know", Response, ignore.case = TRUE) ~ "Don't Know",
+      TRUE ~ Response
+    ),
+    Response = factor(
+      Response,
+      levels = c("No Need", "Low Need", "Medium Need", "High Need", "Don't Know", "Missing")
+    )
+  ) %>%
+  count(Question, Response, .drop = FALSE) %>%
+  pivot_wider(
+    names_from = Response,
+    values_from = n,
+    values_fill = 0
+  ) %>%
+  select(Question, `No Need`, `Low Need`, `Medium Need`, `High Need`, `Don't Know`, Missing)
+
+datatable(
+  housing_needs_summary,
+  filter = "top",
+  options = list(
+    pageLength = 15,
+    scrollX = TRUE,
+    autoWidth = TRUE
+  ),
+  caption = "Special Population Needs - Response Summary"
+)
+```
+
+## Special Population Services and Facilities Need
+Survey respondents identified substantial need for services targeting vulnerable populations. **Persons experiencing homelessness** received the highest urgency ratings, with **206 respondents indicating high need** and an additional **30 marking it as medium need**, reflecting ongoing concern about housing insecurity in the region. Mental health and disability-related populations also drew strong demand: persons with **mental illness (201 high-need responses)**, **persons with substance abuse addictions (176 high-need)**, and **persons with developmental disabilities (157 high-need)** all received significant attention. Justice-involved populations—including **persons recently released from jail/prison (158 high-need)** and **survivors of domestic violence (176 high-need)**—highlight the critical need for reentry and trauma-informed support. 
+```{r Special_Population_Services_Table,  message=FALSE, warning=FALSE}
+special_population_questions <- c(
+  "Persons who are experiencing homelessness",
+  "Youth aging out of foster care",
+  "Persons with mental illness",
+  "Persons with substance abuse addictions",
+  "Survivors of domestic violence",
+  "Persons recently released from jail/prison",
+  "Persons with developmental disabilities",
+  "Persons with physical disabilities",
+  "Veterans",
+  "Seniors (65+)",
+  "Persons with HIV/AIDS"
+)
+
+special_population_summary <- survey_data %>%
+  select(all_of(special_population_questions)) %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = "Question",
+    values_to = "Response"
+  ) %>%
+  mutate(
+    Response = as.character(Response),
+    Response = trimws(Response),
+    Response = case_when(
+      is.na(Response) | Response == "" | Response == "NA" ~ "Missing",
+      grepl("Don.?t Know", Response, ignore.case = TRUE) ~ "Don't Know",
+      TRUE ~ Response
+    ),
+    Response = factor(
+      Response,
+      levels = c("No Need", "Low Need", "Medium Need", "High Need", "Don't Know", "Missing")
+    )
+  ) %>%
+  count(Question, Response, .drop = FALSE) %>%
+  pivot_wider(
+    names_from = Response,
+    values_from = n,
+    values_fill = 0
+  ) %>%
+  select(Question, `No Need`, `Low Need`, `Medium Need`, `High Need`, `Don't Know`, Missing)
+
+datatable(
+  special_population_summary,
+  filter = "top",
+  options = list(
+    pageLength = 15,
+    scrollX = TRUE,
+    autoWidth = TRUE
+  ),
+  caption = "Special Population Services and Facilities Need - Response Summary"
+)
+```
+
+## Business and Economic Development Need
+Respondents emphasized the importance of workforce development and business retention for strengthening the local economy. **Retention of existing businesses (171 high-need responses)**, **fostering businesses with higher-paying jobs (169 high-need)**, **job training (156 high-need)**, and **job retraining (150 high-need)** all received substantial support. **Economic development infrastructure—including enhancement of business infrastructure (118 high-need)**, **expansion of existing businesses (129 high-need)**, and **provision of working capital for businesses (109 high-need)**—also drew significant attention, underscoring the need for coordinated support that addresses both workforce skills and business growth capacity.
+```{r Economic_Development}
+economic_development_questions <- c(
+  "Foster businesses with higher paying jobs",
+  "Retention of existing businesses",
+  "Provision of job training",
+  "Provision of job re-training, such as after plant closure, etc.",
+  "Attraction of new businesses",
+  "Expansion of existing businesses",
+  "Enhancement of business infrastructure",
+  "Provision of technical assistance for businesses",
+  "Provision of working capital for businesses",
+  "Development of business incubators",
+  "Development of business parks"
+)
+
+economic_development_summary <- survey_data %>%
+  select(all_of(economic_development_questions)) %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = "Question",
+    values_to = "Response"
+  ) %>%
+  mutate(
+    Response = as.character(Response),
+    Response = trimws(Response),
+    Response = case_when(
+      is.na(Response) | Response == "" | Response == "NA" ~ "Missing",
+      grepl("Don.?t Know", Response, ignore.case = TRUE) ~ "Don't Know",
+      TRUE ~ Response
+    ),
+    Response = factor(
+      Response,
+      levels = c("No Need", "Low Need", "Medium Need", "High Need", "Don't Know", "Missing")
+    )
+  ) %>%
+  count(Question, Response, .drop = FALSE) %>%
+  pivot_wider(
+    names_from = Response,
+    values_from = n,
+    values_fill = 0
+  ) %>%
+  select(Question, `No Need`, `Low Need`, `Medium Need`, `High Need`, `Don't Know`, Missing)
+
+datatable(
+  economic_development_summary,
+  filter = "top",
+  options = list(
+    pageLength = 15,
+    scrollX = TRUE,
+    autoWidth = TRUE
+  ),
+  caption = "Economic Development - Response Summary"
+)
+
+```
+
+## Budget Allocations
+Respondents were tasked with allocating $100 across five priority areas to represent how the city should allocate resources. Based on these allocations, **Housing (mean = 37.4)** and **Infrastructure Improvements (mean = 31.2) **emerged as the top two community priorities, ranking significantly ahead of Human/Public Services (29.2), Economic Development (24.9), and Community/Public Facilities (24.8). However, the **standard deviations across all categories (ranging from 25.1 to 27.7)** reveal substantial variability in respondent assessments, indicating no strong community-wide consensus on any single priority.
+```{r Budget Allocation}
+priority_rating_questions <- c(
+  "Housing",
+  "Infrastructure Improvements",
+  "Community/ Public Facilities",
+  "Human/ Public Services",
+  "Economic Development"
+)
+
+priority_rating_summary <- survey_data %>%
+  select(all_of(priority_rating_questions)) %>%
+  mutate(across(everything(), as.numeric)) %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = "Question",
+    values_to = "Score"
+  ) %>%
+  group_by(Question) %>%
+  summarise(
+    Mean = round(mean(Score, na.rm = TRUE), 1),
+    Median = round(median(Score, na.rm = TRUE), 1),
+    Min = round(min(Score, na.rm = TRUE), 1),
+    Max = round(max(Score, na.rm = TRUE), 1),
+    SD = round(sd(Score, na.rm = TRUE), 1),
+    .groups = "drop"
+  )
+
+datatable(
+  priority_rating_summary,
+  filter = "top",
+  options = list(
+    pageLength = 10,
+    scrollX = TRUE,
+    autoWidth = TRUE
+  ),
+  caption = "Community Priority Ratings (0-100 Scale)"
+)
+```
+
+## Community Priorities, Barriers, and Access
+### Challenges in Accessing Housing/Housing Services
+Respondents were asked what challenges have they experience when trying to access housing or housing related services in the city.
+
+```{r community_priorities_bar}
+library(dplyr)
+library(tidyr)
+library(plotly)
+library(stringr)
+
+housing_challenges_question <- "What challenges have you experienced when trying to access housing or housing-related services in the City?"
+
+housing_challenges_summary <- survey_data %>%
+  mutate(
+    response_raw = as.character(.data[[housing_challenges_question]]),
+    response_raw = trimws(response_raw),
+    response_raw = ifelse(response_raw == "" | is.na(response_raw), NA, response_raw)
+  ) %>%
+  select(response_raw) %>%
+  filter(!is.na(response_raw)) %>%
+  separate_rows(response_raw, sep = ";") %>%
+  mutate(response_raw = trimws(response_raw)) %>%
+  filter(!is.na(response_raw) & response_raw != "") %>%
+  count(response_raw, name = "Count") %>%
+  arrange(desc(Count)) %>%
+  mutate(
+    label_wrap = str_wrap(response_raw, width = 28)
+  )
+
+custom_colors <- c(
+  "#00173d",
+  "#076201",
+  "#429cf0",
+  "#f9c610",
+  "#555454",
+  "#0a7a01",
+  "#aaceee",
+  "#2c7fb8"
+)
+
+plot_ly(
+  housing_challenges_summary,
+  labels = ~label_wrap,
+  values = ~Count,
+  type = "pie",
+  textinfo = "label+percent",
+  textposition = "outside",
+  automargin = TRUE,
+  hovertemplate = paste(
+    "<b>%{label}</b><br>",
+    "Count: %{value}<br>",
+    "Percent: %{percent}<extra></extra>"
+  ),
+  marker = list(colors = custom_colors)
+) %>%
+  layout(
+    title = list(
+      text = "HOUSING ACCESS CHALLENGES",
+      font = list(
+        family = "Bebas Neue, Montserrat, sans-serif",
+        color = "#00173d",
+        size = 24
+      ),
+      x = 0.5
+    ),
+    font = list(
+      family = "Montserrat, sans-serif",
+      color = "#555454",
+      size = 11
+    ),
+    paper_bgcolor = "#ffffff",
+    plot_bgcolor = "#ffffff",
+    showlegend = FALSE,
+    margin = list(l = 80, r = 80, t = 80, b = 80)
+  )
+```
+
+### Top Priority for City Funding/Investment
+Respondents were asked which of the following should be the top priority for City Funding and Investment.
+```{r priority_city_fund}
+library(dplyr)
+library(plotly)
+library(stringr)
+
+priority_question <- "Which of the following should be the top priority for City funding and investment?"
+
+priority_summary <- survey_data %>%
+  mutate(
+    Response = as.character(.data[[priority_question]]),
+    Response = trimws(Response),
+    Response = ifelse(Response == "" | is.na(Response), NA, Response)
+  ) %>%
+  filter(!is.na(Response)) %>%
+  count(Response, name = "Count") %>%
+  arrange(desc(Count)) %>%
+  mutate(
+    label_wrap = str_replace_all(str_wrap(Response, width = 18), "\n", "<br>")
+  )
+
+custom_colors <- c(
+  "#f9c610",  # yellow
+  "#00173d",  # navy
+  "#076201",  # green
+  "#555454",  # gray
+  "#429cf0"   # blue
+)
+
+plot_ly(
+  type = "treemap",
+  labels = priority_summary$label_wrap,
+  parents = rep("", nrow(priority_summary)),
+  values = priority_summary$Count,
+  text = paste0("n=", priority_summary$Count),
+  textinfo = "label+text",
+  texttemplate = "%{label}<br><br>%{text}",
+  hovertemplate = paste(
+    "<b>%{label}</b><br>",
+    "Count: %{value}<br>",
+    "Percent of total: %{percentRoot}<extra></extra>"
+  ),
+  marker = list(colors = custom_colors),
+  textfont = list(
+    family = "Montserrat, sans-serif",
+    size = 18
+  ),
+  tiling = list(pad = 2)
+) %>%
+  layout(
+    title = list(
+      text = "TOP PRIORITY FOR CITY FUNDING/INVESTMENT",
+      font = list(
+        family = "Bebas Neue, Montserrat, sans-serif",
+        color = "#00173d",
+        size = 24
+      ),
+      x = 0.5
+    ),
+    font = list(
+      family = "Montserrat, sans-serif",
+      color = "#555454",
+      size = 11
+    ),
+    paper_bgcolor = "#ffffff",
+    plot_bgcolor = "#ffffff",
+    margin = list(l = 20, r = 20, t = 80, b = 20)
+  )
+
+```
+
+### Housing Investment Priority
+
+```{r Housing_priority}
+rm(list = intersect(c("housing_investment_plot_data", "housing_investment_plot"), ls()))
+
+housing_investment_plot_data <- survey_data %>%
+  filter(!is.na(`Which of the following housing investments should the City prioritize most?`)) %>%
+  transmute(
+    investment_raw = as.character(`Which of the following housing investments should the City prioritize most?`)
+  ) %>%
+  tidyr::separate_rows(investment_raw, sep = ";") %>%
+  mutate(
+    investment_raw = trimws(investment_raw),
+    investment_raw = dplyr::na_if(investment_raw, "")
+  ) %>%
+  filter(!is.na(investment_raw)) %>%
+  count(investment_raw, name = "n") %>%
+  arrange(n) %>%
+  mutate(
+    investment_label = stringr::str_wrap(investment_raw, width = 32),
+    label_x = n + 3
+  )
+
+bar_colors <- c(
+  "#00173d",
+  "#076201",
+  "#429cf0",
+  "#f9c610",
+  "#555454",
+  "#0a7a01",
+  "#aaceee",
+  "#2c7fb8"
+)
+
+housing_investment_plot <- ggplot(
+  housing_investment_plot_data,
+  aes(
+    x = n,
+    y = reorder(investment_label, n),
+    fill = investment_label,
+    text = paste0(
+      "Housing investment: ", investment_label,
+      "<br>Number of selections: ", n
+    )
+  )
+) +
+  geom_col(show.legend = FALSE) +
+  geom_text(
+    aes(x = label_x, label = n),
+    hjust = 0,
+    fontface = "bold",
+    color = "#555454"
+  ) +
+  scale_fill_manual(values = bar_colors[1:nrow(housing_investment_plot_data)]) +
+  labs(
+    title = "Housing Investment Priorities",
+    x = "Number of Selections",
+    y = NULL
+  ) +
+  scale_x_continuous(expand = expansion(mult = c(0, 0.12))) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold"),
+    axis.title = element_text(face = "bold"),
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.line.x = element_line(color = "black"),
+    axis.ticks.x = element_line(color = "black")
+  )
+
+ggplotly(housing_investment_plot, tooltip = "text") %>%
+  layout(
+    title = list(
+      text = "HOUSING INVESTMENT PRIORITIES",
+      font = list(
+        family = "Bebas Neue, Montserrat, sans-serif",
+        color = "#00173d",
+        size = 24
+      ),
+      x = 0.5
+    ),
+    font = list(
+      family = "Montserrat, sans-serif",
+      color = "#555454",
+      size = 11
+    ),
+    xaxis = list(
+      title = "Number of Selections"
+    ),
+    yaxis = list(
+      title = ""
+    ),
+    paper_bgcolor = "#ffffff",
+    plot_bgcolor = "#ffffff",
+    showlegend = FALSE
+  ) %>%
+  config(displayModeBar = FALSE)
+```
+
+### Single Biggest Challenge Preventing Access to Affordable Housing
+Survey respondents were asked what is the signle biggets challenge preventing them from access to affordable housing.
+
+```{r biggest_challenge}
+rm(list = intersect(c("describe_you_plot_data", "describe_you_plot"), ls()))
+
+describe_you_plot_data <- survey_data %>%
+  transmute(
+    describe_raw = as.character(`Check all of the following that describe you:`)
+  ) %>%
+  mutate(
+    describe_raw = trimws(describe_raw),
+    describe_raw = ifelse(is.na(describe_raw) | describe_raw == "", "No response", describe_raw)
+  ) %>%
+  tidyr::separate_rows(describe_raw, sep = ";") %>%
+  mutate(
+    describe_raw = trimws(describe_raw),
+    describe_raw = ifelse(is.na(describe_raw) | describe_raw == "", "No response", describe_raw)
+  ) %>%
+  count(describe_raw, name = "n") %>%
+  arrange(n) %>%
+  mutate(
+    describe_label = stringr::str_wrap(describe_raw, width = 32),
+    label_x = n + 7
+  )
+
+bar_colors <- c(
+  "#00173d",
+  "#076201",
+  "#429cf0",
+  "#f9c610",
+  "#555454",
+  "#0a7a01",
+  "#aaceee",
+  "#2c7fb8",
+  "#7a7a7a"
+)
+
+describe_you_plot <- ggplot(
+  describe_you_plot_data,
+  aes(
+    x = n,
+    y = reorder(describe_label, n),
+    fill = describe_label,
+    text = paste0(
+      "Response: ", describe_label,
+      "<br>Number of selections: ", n
+    )
+  )
+) +
+  geom_col(show.legend = FALSE) +
+  geom_text(
+    aes(x = label_x, label = n),
+    hjust = 0,
+    fontface = "bold",
+    color = "#555454"
+  ) +
+  scale_fill_manual(values = bar_colors[1:nrow(describe_you_plot_data)]) +
+  labs(
+    title = "RESPONDENT CHARACTERISTICS",
+    x = "Number of Selections",
+    y = NULL
+  ) +
+  scale_x_continuous(expand = expansion(mult = c(0, 0.12))) +
+  theme_minimal() +
+  theme(
+    legend.position = "none",
+    plot.title = element_text(face = "bold"),
+    axis.title = element_text(face = "bold"),
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.line.x = element_line(color = "black"),
+    axis.ticks.x = element_line(color = "black")
+  )
+
+ggplotly(describe_you_plot, tooltip = "text") %>%
+  layout(
+    title = list(
+      text = "RESPONDENT CHARACTERISTICS",
+      font = list(
+        family = "Bebas Neue, Montserrat, sans-serif",
+        color = "#00173d",
+        size = 24
+      ),
+      x = 0.5
+    ),
+    font = list(
+      family = "Montserrat, sans-serif",
+      color = "#555454",
+      size = 11
+    ),
+    xaxis = list(
+      title = "Number of Selections"
+    ),
+    yaxis = list(
+      title = ""
+    ),
+    paper_bgcolor = "#ffffff",
+    plot_bgcolor = "#ffffff",
+    showlegend = FALSE
+  ) %>%
+  config(displayModeBar = FALSE)
+```
