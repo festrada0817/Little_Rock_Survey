@@ -1417,7 +1417,7 @@ plot_ly(
 ```
 
 ### Housing Investment Priority
-
+Survey respondents were asked what should be the top priority for City funding and investment?
 ```{r Housing_priority}
 rm(list = intersect(c("housing_investment_plot_data", "housing_investment_plot"), ls()))
 
@@ -1516,25 +1516,140 @@ ggplotly(housing_investment_plot, tooltip = "text") %>%
 ```
 
 ### Single Biggest Challenge Preventing Access to Affordable Housing
-Survey respondents were asked what is the signle biggets challenge preventing them from access to affordable housing.
+Survey respondents were asked what is the single biggets challenge preventing them from access to affordable housing.
 
-```{r biggest_challenge}
+```{r challenge_affordable_housing}
+
+rm(list = intersect(c("housing_challenge_plot_data", "housing_challenge_plot"), ls()))
+
+housing_challenge_plot_data <- survey_data %>%
+  transmute(
+    challenge_raw = as.character(`What is the single biggest challenge preventing access to affordable housing in the City?`)
+  ) %>%
+  mutate(
+    challenge_raw = trimws(challenge_raw),
+    challenge_raw = ifelse(is.na(challenge_raw) | challenge_raw == "", "No response", challenge_raw)
+  ) %>%
+  count(challenge_raw, name = "n") %>%
+  arrange(n) %>%
+  mutate(
+    challenge_label = stringr::str_wrap(challenge_raw, width = 32),
+    label_x = n + 3
+  )
+
+bar_colors <- c(
+  "#00173d",
+  "#076201",
+  "#429cf0",
+  "#f9c610",
+  "#555454",
+  "#0a7a01",
+  "#aaceee",
+  "#2c7fb8",
+  "#7a7a7a"
+)
+
+housing_challenge_plot <- ggplot(
+  housing_challenge_plot_data,
+  aes(
+    x = n,
+    y = reorder(challenge_label, n),
+    fill = challenge_label,
+    text = paste0(
+      "Response: ", challenge_raw,
+      "<br>Number of responses: ", n
+    )
+  )
+) +
+  geom_col(show.legend = FALSE) +
+  geom_text(
+    aes(x = label_x, label = n),
+    hjust = 0,
+    fontface = "bold",
+    color = "#555454"
+  ) +
+  scale_fill_manual(values = bar_colors[1:nrow(housing_challenge_plot_data)]) +
+  labs(
+    title = "BIGGEST CHALLENGE TO AFFORDABLE HOUSING ACCESS",
+    x = "Number of Responses",
+    y = NULL
+  ) +
+  scale_x_continuous(expand = expansion(mult = c(0, 0.12))) +
+  theme_minimal() +
+  theme(
+    legend.position = "none",
+    plot.title = element_text(face = "bold"),
+    axis.title = element_text(face = "bold"),
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.line.x = element_line(color = "black"),
+    axis.ticks.x = element_line(color = "black")
+  )
+
+ggplotly(housing_challenge_plot, tooltip = "text") %>%
+  layout(
+    title = list(
+      text = "BIGGEST CHALLENGE TO AFFORDABLE HOUSING ACCESS",
+      font = list(
+        family = "Bebas Neue, Montserrat, sans-serif",
+        color = "#00173d",
+        size = 24
+      ),
+      x = 0.5
+    ),
+    font = list(
+      family = "Montserrat, sans-serif",
+      color = "#555454",
+      size = 11
+    ),
+    xaxis = list(
+      title = "Number of Responses"
+    ),
+    yaxis = list(
+      title = ""
+    ),
+    paper_bgcolor = "#ffffff",
+    plot_bgcolor = "#ffffff",
+    showlegend = FALSE
+  ) %>%
+  config(displayModeBar = FALSE)
+```
+
+### Respondent Characteristic
+Survey respondents were asked how they would describe themselves.
+
+```{r charecteristic}
 rm(list = intersect(c("describe_you_plot_data", "describe_you_plot"), ls()))
+
+blank_count <- survey_data %>%
+  summarise(
+    n = sum(
+      is.na(`Check all of the following that describe you:`) |
+      trimws(`Check all of the following that describe you:`) == ""
+    )
+  ) %>%
+  pull(n)
 
 describe_you_plot_data <- survey_data %>%
   transmute(
     describe_raw = as.character(`Check all of the following that describe you:`)
   ) %>%
   mutate(
-    describe_raw = trimws(describe_raw),
-    describe_raw = ifelse(is.na(describe_raw) | describe_raw == "", "No response", describe_raw)
+    describe_raw = trimws(describe_raw)
   ) %>%
+  filter(!is.na(describe_raw), describe_raw != "") %>%
   tidyr::separate_rows(describe_raw, sep = ";") %>%
   mutate(
-    describe_raw = trimws(describe_raw),
-    describe_raw = ifelse(is.na(describe_raw) | describe_raw == "", "No response", describe_raw)
+    describe_raw = trimws(describe_raw)
   ) %>%
+  filter(describe_raw != "") %>%
   count(describe_raw, name = "n") %>%
+  bind_rows(
+    tibble::tibble(
+      describe_raw = "No response",
+      n = blank_count
+    )
+  ) %>%
   arrange(n) %>%
   mutate(
     describe_label = stringr::str_wrap(describe_raw, width = 32),
@@ -1560,7 +1675,7 @@ describe_you_plot <- ggplot(
     y = reorder(describe_label, n),
     fill = describe_label,
     text = paste0(
-      "Response: ", describe_label,
+      "Response: ", describe_raw,
       "<br>Number of selections: ", n
     )
   )
@@ -1618,3 +1733,4 @@ ggplotly(describe_you_plot, tooltip = "text") %>%
   ) %>%
   config(displayModeBar = FALSE)
 ```
+
