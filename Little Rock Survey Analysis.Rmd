@@ -1,0 +1,606 @@
+---
+title: "Little Rock Survey Analysis"
+output:
+  html_document:
+    theme: united
+    toc: true
+    toc_float: true
+    css: styles.css
+---
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+## Introduction
+The City of Little Rock Department of Housing and Neighborhood Programs recently launched a survey asking residents to share their priorities to help develop the 2026–2030 Consolidated Plan. 
+
+The survey would:
+
+- Guide Funding: directly determines how the city allocates federal funds for community development.
+- Shape Policy: help local leadership understand the real needs of neighborhoods across Little Rock.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  message = FALSE,
+  warning = FALSE
+)
+
+library(dplyr)
+library(DT)
+library(readxl)
+library(ggplot2)
+```
+## ZIP Code Responses
+A total of **259** Little Rock residents completed the survey, providing critical neighborhood-level data. Engagement was led by the **72205** ZIP code, establishing a strong baseline for localized community insights.
+
+### Responses by Zip Code
+```{r Zip Code}
+# Packages
+library(dplyr)
+library(ggplot2)
+library(knitr)
+library(kableExtra)
+library(readxl)
+library(kableExtra)
+library(DT)
+
+# Read the data
+library(readxl)
+Housing_Community_Development_Survey_1_262_ <- read_excel("~/Downloads/Housing & Community Development Survey(1-262).xlsx")
+survey_data<-Housing_Community_Development_Survey_1_262_
+
+# Create ZIP to County mapping for Arkansas
+zip_to_county <- data.frame(
+  zip_code = c(72202, 72201, 72203, 72204, 72205, 72206, 72207, 72209, 
+               72210, 72211, 72212, 72223, 72227,  
+               72103, 72106, 72114, 72116, 72117, 72118, 72120, 
+               72019, 72022, 72113, 72135, 72295, 71603),
+  county = c(rep("Pulaski County", 13),  
+             rep("Pulaski County", 7),   
+             "Faulkner County", "Faulkner County", "Pulaski County", 
+             "Pulaski County", "Lonoke County", "Pine Bluff/Jefferson County")
+)
+
+# Add county column to survey data
+survey_data <- survey_data %>%
+  rename(zip_code = `What is your ZIP code?`) %>%
+  mutate(zip_code = as.numeric(zip_code)) %>%  # Convert to numeric
+  left_join(zip_to_county, by = "zip_code")
+
+# Create summary table of ZIP code counts
+zip_table <- survey_data %>%
+  count(zip_code, county) %>%
+  arrange(desc(n)) %>%
+  rename(`ZIP Code` = zip_code, 
+         County = county, 
+         `Number of Respondents` = n)
+
+# Data table of zipcodes
+datatable(zip_table, 
+          filter = 'top',
+          options = list(pageLength = 23),
+          caption = "Survey Respondents by ZIP Code")
+
+```
+### Responses by County
+The geographical distribution below confirms that most respondents reside within Pulaski County, consistent with Little Rock's city boundaries.
+```{r county-pie-interactive, echo=FALSE, message=FALSE, warning=FALSE}
+library(plotly)
+
+county_summary <- survey_data %>%
+  dplyr::count(county) %>%
+  dplyr::arrange(dplyr::desc(n)) %>%
+  dplyr::mutate(
+    percentage = round(n / sum(n) * 100, 1),
+    label_text = paste0(county, ": ", n, " (", percentage, "%)")
+  )
+
+plot_ly(
+  data = county_summary,
+  labels = ~county,
+  values = ~n,
+  type = "pie",
+  text = ~label_text,
+  textinfo = "text",
+  textposition = "outside",
+  automargin = TRUE,
+  hovertemplate = paste(
+    "<b>%{label}</b><br>",
+    "Responses: %{value}<br>",
+    "Percent: %{percent}<extra></extra>"
+  ),
+  marker = list(
+    colors = c("#00173d", "#076201", "#429cf0", "#f9c610", "#7a7a7a"),
+    line = list(color = "#FFFFFF", width = 2)
+  ),
+  domain = list(x = c(0, 1), y = c(0, 0.88))
+) %>%
+  layout(
+    title = list(
+      text = "Survey Respondents by County",
+      x = 0.5,
+      y = 0.98,
+      xanchor = "center",
+      yanchor = "top",
+      font = list(size = 20, color = "#00173d")
+    ),
+    margin = list(t = 120, b = 40, l = 40, r = 40),
+    showlegend = FALSE
+  )
+```
+### Map of Responses by Zip Code
+The geographic distribution of responses shows a clear concentration in central Little Rock, with the highest response counts occurring in ZIP codes located within or near the city boundary. Responses from surrounding communities also appear across the broader region, suggesting that the survey captured not only city residents but also individuals from nearby areas who may commute into Little Rock for work, services, or other daily activities.
+```{r zip-map-interactive, echo=FALSE, message=FALSE, warning=FALSE}
+library(dplyr)
+library(sf)
+library(tigris)
+library(leaflet)
+
+options(tigris_use_cache = TRUE)
+
+# Count responses by ZIP code
+zip_counts <- survey_data %>%
+  dplyr::count(zip_code, name = "responses") %>%
+  dplyr::mutate(zip_code = sprintf("%05d", zip_code))
+
+# Pull Arkansas ZCTA boundaries using 2020 Census geography
+ar_zctas <- tigris::zctas(cb = TRUE, starts_with = c("72"), year = 2020) %>%
+  sf::st_transform(4326)
+
+# Join ZIP counts to map polygons
+zip_map <- ar_zctas %>%
+  dplyr::filter(ZCTA5CE20%in% zip_counts$zip_code) %>%
+  dplyr::left_join(zip_counts, by = c("ZCTA5CE20" = "zip_code"))
+
+# Pull Arkansas place boundaries and isolate Little Rock
+ar_places <- tigris::places(state = "AR", cb = TRUE, year = 2020) %>%
+  sf::st_transform(4326)
+
+little_rock <- ar_places %>%
+  dplyr::filter(NAME == "Little Rock")
+
+# Make geometries valid
+zip_map <- sf::st_make_valid(zip_map)
+little_rock <- sf::st_make_valid(little_rock)
+
+# Create blue-to-yellow palette
+pal <- leaflet::colorNumeric(
+  palette = c("#0b3c8c", "#2f6db3", "#6aaed6", "#f3d34a", "#f9e721"),
+  domain = zip_map$responses,
+  na.color = "#d9d9d9"
+)
+
+# Build interactive map
+leaflet() %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  setView(lng = -92.2896, lat = 34.7465, zoom = 10) %>%
+  addPolygons(
+    data = zip_map,
+    fillColor = ~pal(responses),
+    color = "white",
+    weight = 1,
+    fillOpacity = 0.75,
+    smoothFactor = 0.2,
+    popup = ~paste0(
+      "<b>ZIP Code:</b> ", ZCTA5CE20, "<br>",
+      "<b>Responses:</b> ", responses
+    ),
+    label = ~paste0("ZIP ", ZCTA5CE20, ": ", responses, " responses")
+  ) %>%
+  addPolygons(
+    data = little_rock,
+    fill = FALSE,
+    color = "#111111",
+    weight = 3,
+    opacity = 1,
+    label = ~paste0(NAME, " city boundary")
+  ) %>%
+  addLegend(
+    position = "bottomright",
+    pal = pal,
+    values = zip_map$responses,
+    title = "Responses",
+    opacity = 1
+  )
+```
+
+## Survey Respondent Profile
+The following section analyzes the profile of the survey respondents by asking the following questions: 
+
+- How many people live in your household (including yourself)?
+- What is your approximate total household income?
+- Which of the following best describes your race or ethnicity? (Select all that apply)
+- Which of the following best describes your family or household type?
+- Which best describes your current housing situation?
+
+### How many people live in your household (including yourself)?
+The most common household size among respondents was two people, reported by 108 respondents.
+```{r household_size, echo=FALSE, message=FALSE, warning=FALSE}
+library(dplyr)
+library(ggplot2)
+library(plotly)
+
+household_size_plot_data <- survey_data %>%
+  filter(!is.na(`How many people live in your household (including yourself)?`)) %>%
+  mutate(
+    household_size = as.character(`How many people live in your household (including yourself)?`)
+  ) %>%
+  filter(household_size != "") %>%
+  count(household_size) %>%
+  mutate(
+    fill_color = ifelse(household_size == "2", "#f9c610", "#00173d"),
+    label_y = n + 2
+  )
+
+household_size_plot <- ggplot(
+  household_size_plot_data,
+  aes(
+    x = household_size,
+    y = n,
+    text = paste0(
+      "Household size: ", household_size,
+      "<br>Number of responses: ", n
+    )
+  )
+) +
+  geom_col(aes(fill = I(fill_color))) +
+  geom_text(aes(y = label_y, label = n), fontface = "bold") +
+  labs(
+    title = "Household Size of Respondents",
+    x = "Number of People in Household",
+    y = "Number of Respondents"
+  ) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.08))) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold"),
+    axis.title = element_text(face = "bold"),
+    panel.grid = element_blank(),
+    axis.line = element_line(color = "black"),
+    axis.ticks = element_line(color = "black")
+  )
+
+ggplotly(household_size_plot, tooltip = "text") %>%
+  config(displayModeBar = FALSE)
+```
+
+### What is your approximate total household income?
+The survey captured a total of 259 valid responses regarding household income. The distribution shows that the ***largest group of respondents*** (85, or 33%) reported household incomes over **$100,000**, followed by ***45 respondents (17%)*** in the **$25,000–$50,000** range and ***43 respondents (17%)*** in the **$75,000–$100,000** range. Notably, 36 respondents (14%) preferred not to disclose their income.
+
+**Important Context:** The income distribution observed in this survey skews higher than Little Rock's median household income of approximately $52,000 for a two-person household. This discrepancy likely reflects two key factors: ***(1) the survey included respondents from outside the City of Little Rock boundaries, including suburban areas with higher median incomes***, and ***(2) the survey methodology may have reached more engaged stakeholders such as homeowners, city employees, and nonprofit representatives, who tend to have higher incomes than the general population.***
+
+```{r Income_Plot,  echo=FALSE, message=FALSE, warning=FALSE}
+rm(list = intersect(c("household_income_plot_data", "household_income_plot"), ls()))
+
+income_plot_data_new <- survey_data %>%
+  filter(!is.na(`What is your approximate total household income?`)) %>%
+  transmute(income_raw = as.character(`What is your approximate total household income?`)) %>%
+  count(income_raw, name = "n") %>%
+  mutate(
+    income_label = dplyr::recode(
+      income_raw,
+      "Under 25,000" = "Under $25,000",
+      "25,00050,000" = "$25,000–$50,000",
+      "50,00075,000" = "$50,000–$75,000",
+      "75,000100,000" = "$75,000–$100,000",
+      "Over 100,000" = "Over $100,000",
+      "Prefer not to say" = "Prefer not to say"
+    ),
+    income_label = factor(
+      income_label,
+      levels = c(
+        "Under $25,000",
+        "$25,000–$50,000",
+        "$50,000–$75,000",
+        "$75,000–$100,000",
+        "Over $100,000",
+        "Prefer not to say"
+      )
+    ),
+    label_y = n + 2
+  ) %>%
+  arrange(income_label)
+
+income_plot_new <- ggplot(
+  income_plot_data_new,
+  aes(
+    x = income_label,
+    y = n,
+    text = paste0(
+      "Income range: ", income_label,
+      "<br>Number of responses: ", n
+    )
+  )
+) +
+  geom_col(fill = "#00173d") +
+  geom_text(aes(y = label_y, label = n), fontface = "bold") +
+  labs(
+    title = "Approximate Total Household Income of Respondents",
+    x = "Income Range",
+    y = "Number of Respondents"
+  ) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.08))) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold"),
+    axis.title = element_text(face = "bold"),
+    panel.grid = element_blank(),
+    axis.line = element_line(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    axis.text.x = element_text(angle = 20, hjust = 1)
+  )
+
+ggplotly(income_plot_new, tooltip = "text") %>%
+  config(displayModeBar = FALSE)
+```
+
+### Which of the following best describes your race or ethnicity? (Select all that apply)
+The racial and ethnic composition of survey respondents reflects Little Rock's diverse community. White respondents represented the largest single group with 129 responses, followed by Black or African American respondents with 94 responses. A smaller number of respondents identified as Hispanic or Latino (9 responses), Asian (1 response), or selected multiple racial/ethnic categories to describe their identity. Notably, 20 respondents preferred not to disclose their race or ethnicity.
+```{r Race_Plot,  echo=FALSE, message=FALSE, warning=FALSE}
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(plotly)
+
+race_counts <- survey_data %>%
+  mutate(
+    race = str_trim(`Which of the following best describes your race or ethnicity? (Select all that apply)`),
+    race = str_remove(race, ";$")
+  ) %>%
+  filter(!is.na(race), race != "", race != "(Blanks)") %>%
+  count(race, name = "responses", sort = TRUE) %>%
+  mutate(race = factor(race, levels = rev(race)))
+
+race_count <- ggplot(
+  race_counts,
+  aes(
+    x = race,
+    y = responses,
+    text = paste0(race, ": ", responses)
+  )
+) +
+  geom_col(fill = "#00173d", width = 0.8) +
+  coord_flip() +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +
+  labs(
+    title = "Race/Ethnicity of Respondents",
+    subtitle = "(Respondents could select multiple categories)",
+    x = NULL,
+    y = "Number of Respondents"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold"),
+    plot.subtitle = element_text(size = 10, color = "gray40"),
+    axis.title = element_text(face = "bold"),
+    panel.grid = element_blank(),
+    axis.line = element_line(color = "black"),
+    axis.ticks = element_line(color = "black")
+  )
+
+ggplotly(race_count, tooltip = "text")
+```
+
+### Which best describes your current housing situation?
+The overwhelming majority of survey respondents are homeowners, with **199 respondents (77%)** reporting that they **own** their homes. This was followed by **47 renters (18%)**, while a small number of respondents reported living with family or friends without paying rent (7 respondents, 3%). Additionally, 5 respondents preferred not to disclose their housing situation, and **1 respondent** reported **experiencing homelessness**.
+```{r Housing_Sit, echo=FALSE, message=FALSE, warning=FALSE}
+housing_situation_counts <- survey_data %>%
+  mutate(
+    housing_situation = str_trim(`Which best describes your current housing situation?`)
+  ) %>%
+  filter(!is.na(housing_situation), housing_situation != "", housing_situation != "(Blanks)") %>%
+  count(housing_situation, name = "responses", sort = TRUE) %>%
+  mutate(
+    housing_situation = factor(housing_situation, levels = rev(housing_situation)),
+    label_y = responses + 8
+  )
+
+housing_plot <- ggplot(
+  housing_situation_counts,
+  aes(
+    x = housing_situation,
+    y = responses,
+    text = paste0(housing_situation, ": ", responses)
+  )
+) +
+  geom_col(fill = "#00173d", width = 0.8) +
+  geom_text(aes(y = label_y, label = responses), fontface = "bold", hjust = 0, size = 3.5) +
+  coord_flip() +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.10))) +
+  labs(
+    title = "Current Housing Situation of Respondents",
+    x = NULL,
+    y = "Number of Respondents"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold"),
+    axis.title = element_text(face = "bold"),
+    panel.grid = element_blank(),
+    axis.line = element_line(color = "black"),
+    axis.ticks = element_line(color = "black")
+  )
+
+ggplotly(housing_plot, tooltip = "text")
+```
+
+## Housing Activities Rating
+Respondents were asked to rate the level of need for 19 different housing investment categories on a scale from "No Need" to "High Need." The data reveals strong consensus around several key priorities.
+
+**Top Investment Priorities (Highest "High Need" Ratings):**
+
+- The three housing investments with the most "High Need" responses were:
+- First-time home-buyer assistance (162 respondents, 63%)
+- Construction of new affordable housing for home ownership (159 respondents, 61%)
+- Construction of new affordable rental housing (155 respondents, 60%)
+
+**Additional High-Priority Needs:**
+
+Beyond the top three, respondents also indicated strong need for:
+
+- Energy efficiency improvements (149 High Need, 58%)
+- ADA (Americans with Disabilities Act) improvements (138 High Need, 53%)
+- Heating/cooling HVAC replacement or repairs (119 High Need, 46%)
+
+
+Important Context: Given that ***77% of survey respondents are homeowners***, the high ratings for homeownership-related programs (first-time buyer assistance, new affordable ownership housing) may reflect respondents' desire to help others achieve homeownership rather than addressing their own immediate housing needs. The strong support for rental housing construction and assistance programs demonstrates recognition of broader community needs beyond the respondent pool's predominant housing tenure.
+```{r Housing_Needs_Table, echo=FALSE, message=FALSE, warning=FALSE}
+library(dplyr)
+library(tidyr)
+library(DT)
+
+# First, let's see what the actual column names are
+# Uncomment this line to debug:
+# names(survey_data)[grepl("Retrofit|Senior|HVAC|ADA", names(survey_data), ignore.case = TRUE)]
+
+# List of all housing investment questions - using any_of() to handle variations
+housing_questions <- c(
+  "Supportive housing for people who are experiencing homelessness",
+  "Energy efficiency improvements",
+  "First-time home-buyer assistance",
+  "Homeownership for racial and ethnic minority populations",
+  "Housing located adjacent or near transportation options",
+  "Homeowner housing rehabilitation",
+  "Supportive housing for people who have disabilities",
+  "Rental housing for very low-income households",
+  "ADA (Americans with Disabilities Act) improvements",
+  "Construction of new affordable housing for home ownership",
+  "Retrofitting existing housing to meet seniors' needs",
+  "Retrofitting existing housing to meet seniors needs",  # Try without apostrophe
+  "Rental assistance",
+  "Heating/cooling HVAC replacement or repairs",
+  "Heating/cooling (HVAC) replacement or repairs",  # Try with parentheses
+  "Senior Citizen Housing",
+  "Rental housing rehabilitation",
+  "Construction of new affordable rental housing",
+  "Preservation of federal subsidized housing",
+  "Housing demolition",
+  "Mixed income housing",
+  "Mixed use housing"
+)
+
+# Create summary table using any_of() to ignore missing columns
+housing_needs_summary <- survey_data %>%
+  select(any_of(housing_questions)) %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = "Question",
+    values_to = "Response"
+  ) %>%
+  mutate(
+    Response = case_when(
+      is.na(Response) ~ "Missing",
+      Response == "" ~ "Missing",
+      TRUE ~ as.character(Response)
+    )
+  ) %>%
+  count(Question, Response) %>%
+  pivot_wider(
+    names_from = Response,
+    values_from = n,
+    values_fill = 0
+  )
+
+# Reorder columns if they exist
+col_order <- c("Question", "No Need", "Low Need", "Medium Need", "High Need", "Dont Know", "Missing")
+existing_cols <- intersect(col_order, names(housing_needs_summary))
+housing_needs_summary <- housing_needs_summary %>%
+  select(all_of(existing_cols))
+
+# Display interactive table
+datatable(
+  housing_needs_summary,
+  filter = 'top',
+  options = list(
+    pageLength = 20,
+    scrollX = TRUE,
+    autoWidth = TRUE
+  ),
+  caption = "Housing Activities - Response Summary"
+)
+```
+
+## Development and Preservation Needs
+Respondents were asked to rate their level of agreement with 19 potential barriers that prevent access to affordable housing in Little Rock, using a scale from "Strongly Disagree" to "Strongly Agree".
+
+**The barriers with the highest combined agreement were:**
+
+- Cost of materials (212 combined agree, 82% of respondents)
+- Cost of labor (201 combined agree, 78% of respondents)
+-Lack of affordable housing development incentives (190 combined agree, 73% of respondents)
+- Not In My Back Yard (NIMBY) mentality (184 combined agree, 71% of respondents)
+- Lack of affordable housing development policies (177 combined agree, 68% of respondents)
+- Cost of land or lot (172 combined agree, 66% of respondents)
+
+
+```{r Barriers_Table, echo=FALSE, message=FALSE, warning=FALSE}
+
+
+# List of all barrier questions
+barrier_questions <- c(
+  "Not In My Back Yard (NIMBY) mentality",
+  "Not In My Back Yard NIMBY mentality",  # Try without parentheses
+  "Lack of property maintenance code enforcement",
+  "Lack of street lighting",
+  "Cost of materials",
+  "Cost of labor",
+  "Lack of understanding of property caretaking",
+  "Lack of affordable housing development incentives",
+  "Lack of affordable housing development policies",
+  "Lack of police patrol",
+  "Density or other zoning requirements",
+  "Cost of land or lot",
+  "Permitting process",
+  "Permitting/Construction fees",
+  "PermittingConstruction fees",  # Try without slash
+  "Planning site plan review and approval process",
+  "Planning (site plan) review and approval process",  # Try with parentheses
+  "Lack of qualified contractors or builders",
+  "Building codes",
+  "Lot size",
+  "ADA codes",
+  "Lack of available land"
+)
+
+# Create summary table
+barriers_summary <- survey_data %>%
+  select(any_of(barrier_questions)) %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = "Question",
+    values_to = "Response"
+  ) %>%
+  mutate(
+    Response = case_when(
+      is.na(Response) ~ "Missing",
+      Response == "" ~ "Missing",
+      TRUE ~ as.character(Response)
+    )
+  ) %>%
+  count(Question, Response) %>%
+  pivot_wider(
+    names_from = Response,
+    values_from = n,
+    values_fill = 0
+  )
+
+# Reorder columns if they exist
+col_order <- c("Question", "Strongly Agree", "Agree", "Neither Agree or Disagree", 
+               "Disagree", "Strongly Disagree", "Missing")
+existing_cols <- intersect(col_order, names(barriers_summary))
+barriers_summary <- barriers_summary %>%
+  select(all_of(existing_cols))
+
+# Display interactive table
+datatable(
+  barriers_summary,
+  filter = 'top',
+  options = list(
+    pageLength = 20,
+    scrollX = TRUE,
+    autoWidth = TRUE
+  ),
+  caption = "Development and Preservation Needs - Response Summary"
+)
+```
