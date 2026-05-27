@@ -34,27 +34,44 @@ a:hover {
   color: #076201;
 }
 
+/* Left sidebar / TOC */
 .tocify {
-  background-color: #00173d;
+  background-color: #076201 !important;
   border-right: 4px solid #f9c610;
 }
 
-.tocify .tocify-header,
-.tocify .tocify-item a,
-.tocify-item.active a {
-  color: #ffffff;
+.tocify .tocify-header {
+  color: #ffffff !important;
 }
 
-.tocify-item.active {
-  background-color: #076201;
+.tocify .list-group-item {
+  background-color: #076201 !important;
+  color: #ffffff !important;
+  border-color: #076201 !important;
 }
 
+.tocify .list-group-item a,
+.tocify .tocify-item a {
+  color: #ffffff !important;
+}
+
+.tocify .list-group-item:hover,
+.tocify .tocify-item a:hover {
+  background-color: #0a7a01 !important;
+  color: #ffffff !important;
+}
+
+.tocify-item.active,
+.tocify .list-group-item.active,
+.tocify .list-group-item.active:focus,
+.tocify .list-group-item.active:hover,
 .list-group-item.active,
 .list-group-item.active:focus,
 .list-group-item.active:hover {
-  background-color: #00173d;
-  border-color: #00173d;
-  color: #ffffff;
+  background-color: #00173d !important;
+  border-color: #00173d !important;
+  color: #ffffff !important;
+  border-left: 4px solid #f9c610;
 }
 
 pre, code {
