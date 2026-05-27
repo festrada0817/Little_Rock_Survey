@@ -450,11 +450,6 @@ library(dplyr)
 library(tidyr)
 library(DT)
 
-# First, let's see what the actual column names are
-# Uncomment this line to debug:
-# names(survey_data)[grepl("Retrofit|Senior|HVAC|ADA", names(survey_data), ignore.case = TRUE)]
-
-# List of all housing investment questions - using any_of() to handle variations
 housing_questions <- c(
   "Supportive housing for people who are experiencing homelessness",
   "Energy efficiency improvements",
@@ -466,11 +461,9 @@ housing_questions <- c(
   "Rental housing for very low-income households",
   "ADA (Americans with Disabilities Act) improvements",
   "Construction of new affordable housing for home ownership",
-  "Retrofitting existing housing to meet seniors' needs",
-  "Retrofitting existing housing to meet seniors needs",  # Try without apostrophe
+  "Retrofitting existing housing to meet seniors’ needs",
   "Rental assistance",
   "Heating/cooling HVAC replacement or repairs",
-  "Heating/cooling (HVAC) replacement or repairs",  # Try with parentheses
   "Senior Citizen Housing",
   "Rental housing rehabilitation",
   "Construction of new affordable rental housing",
@@ -480,38 +473,36 @@ housing_questions <- c(
   "Mixed use housing"
 )
 
-# Create summary table using any_of() to ignore missing columns
 housing_needs_summary <- survey_data %>%
-  select(any_of(housing_questions)) %>%
+  select(all_of(housing_questions)) %>%
   pivot_longer(
     cols = everything(),
     names_to = "Question",
     values_to = "Response"
   ) %>%
   mutate(
+    Response = as.character(Response),
+    Response = trimws(Response),
     Response = case_when(
-      is.na(Response) ~ "Missing",
-      Response == "" ~ "Missing",
-      TRUE ~ as.character(Response)
+      is.na(Response) | Response == "" | Response == "NA" ~ "Missing",
+      grepl("Don.?t Know", Response, ignore.case = TRUE) ~ "Don't Know",  # Pattern matching
+      TRUE ~ Response
+    ),
+    Response = factor(
+      Response,
+      levels = c("No Need", "Low Need", "Medium Need", "High Need", "Don't Know", "Missing")
     )
   ) %>%
-  count(Question, Response) %>%
+  count(Question, Response, .drop = FALSE) %>%
   pivot_wider(
     names_from = Response,
     values_from = n,
     values_fill = 0
   )
 
-# Reorder columns if they exist
-col_order <- c("Question", "No Need", "Low Need", "Medium Need", "High Need", "Dont Know", "Missing")
-existing_cols <- intersect(col_order, names(housing_needs_summary))
-housing_needs_summary <- housing_needs_summary %>%
-  select(all_of(existing_cols))
-
-# Display interactive table
 datatable(
   housing_needs_summary,
-  filter = 'top',
+  filter = "top",
   options = list(
     pageLength = 20,
     scrollX = TRUE,
@@ -520,6 +511,7 @@ datatable(
   caption = "Housing Activities - Response Summary"
 )
 ```
+
 
 ## Development and Preservation Needs
 Respondents were asked to rate their level of agreement with 19 potential barriers that prevent access to affordable housing in Little Rock, using a scale from "Strongly Disagree" to "Strongly Agree".
@@ -604,3 +596,286 @@ datatable(
   caption = "Development and Preservation Needs - Response Summary"
 )
 ```
+
+## Infrastructure Activities Rating
+Residents identified sidewalk improvements **(178 High Need responses)** and street and **road improvements (175 High Need)** as the most critical infrastructure priorities. **Flood drainage (144 High Need)** and **park and recreation improvements (141 High Need)** also ranked highly. Water and sewer system items received more "Don't Know" responses, particularly Bridge improvements (50), Water system capacity (65), and Sewer system improvements (62), suggesting lower familiarity with these infrastructure needs.
+```{r Infrastructure Activities, echo=FALSE, message=FALSE, warning=FALSE}
+
+infrastructure_questions <- c(
+  "Sidewalk improvements",
+  "Street and road improvements",
+  "Park and recreation improvements",
+  "Bicycle and walking paths",
+  "Flood drainage improvements",
+  "New Tree Planting",
+  "Storm sewer system improvements",
+  "Water system capacity improvements",
+  "Sewer system improvements",
+  "Bridge improvements",
+  "Water quality improvements"
+)
+
+infrastructure_summary <- survey_data %>%
+  select(all_of(infrastructure_questions)) %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = "Question",
+    values_to = "Response"
+  ) %>%
+  mutate(
+    Response = as.character(Response),
+    Response = trimws(Response),
+    Response = case_when(
+      is.na(Response) | Response == "" | Response == "NA" ~ "Missing",
+      grepl("Don.?t Know", Response, ignore.case = TRUE) ~ "Don't Know",
+      TRUE ~ Response
+    ),
+    Response = factor(
+      Response,
+      levels = c("No Need", "Low Need", "Medium Need", "High Need", "Don't Know", "Missing")
+    )
+  ) %>%
+  count(Question, Response, .drop = FALSE) %>%
+  pivot_wider(
+    names_from = Response,
+    values_from = n,
+    values_fill = 0
+  ) %>%
+  select(Question, `No Need`, `Low Need`, `Medium Need`, `High Need`, `Don't Know`, Missing)
+
+datatable(
+  infrastructure_summary,
+  filter = "top",
+  options = list(
+    pageLength = 15,
+    scrollX = TRUE,
+    autoWidth = TRUE
+  ),
+  caption = "Infrastructure Improvements - Response Summary"
+)
+```
+### Resident Concerns About Drainage and Flooding Align with Documented Flood Vulnerability in Little Rock 
+Survey respondents frequently identified drainage improvements, storm water management, and flooding prevention as priority infrastructure needs. The FEMA flood zone map reveals that significant portions of the city fall within designated flood hazard areas: Zone AE (yellow) and Zone A (red) are Special Flood Hazard Areas with a 1% annual chance of flooding—often called the "100-year floodplain"—where federal flood insurance is required for mortgage holders. Zone AE includes detailed base flood elevation data along the Arkansas River and major tributaries, while Zone A indicates high flood risk without precise elevation measurements. Zone X (green) represents minimal flood risk areas outside the 500-year floodplain, though flooding can still occur during severe storms. The concentration of high-risk zones along Little Rock's waterways suggests that resident-reported drainage concerns reflect real flood vulnerability, supporting the need for targeted infrastructure investments in storm water systems and flood control measures within Zones A and AE to address both community priorities and documented hazard exposure.
+```{r little-rock-flood-map, message=FALSE, warning=FALSE}
+library(sf)
+library(dplyr)
+library(leaflet)
+library(tigris)
+
+options(tigris_use_cache = TRUE)
+
+# Read FEMA flood hazard polygons
+flood_zones <- st_read("05119C_20250624/S_FLD_HAZ_AR.shp", quiet = TRUE) %>%
+  st_transform(4326) %>%
+  st_make_valid()
+
+# Get Little Rock city boundary from Census places
+ar_places <- tigris::places(state = "AR", cb = TRUE, year = 2020) %>%
+  st_transform(4326) %>%
+  st_make_valid()
+
+little_rock <- ar_places %>%
+  filter(NAME == "Little Rock")
+
+# Clip FEMA flood zones to Little Rock boundary
+flood_touching <- st_filter(flood_zones, little_rock, .predicate = st_intersects)
+flood_zones_lr <- st_intersection(flood_touching, little_rock) %>%
+  st_make_valid()
+
+# Leaflet sometimes fails when sf geometry columns keep names
+names(st_geometry(flood_zones_lr)) <- NULL
+names(st_geometry(little_rock)) <- NULL
+
+# Flood zone color palette
+pal_flood <- colorFactor(
+  palette = c(
+    "A"  = "#d73027",
+    "AE" = "#f9c610",
+    "AH" = "#fee08b",
+    "X"  = "#076201"
+  ),
+  domain = flood_zones_lr$FLD_ZONE,
+  na.color = "#d9d9d9"
+)
+
+# Bounding box for Little Rock
+bb <- st_bbox(little_rock)
+
+# Build map
+leaflet() %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  addPolygons(
+    data = flood_zones_lr,
+    fillColor = ~pal_flood(FLD_ZONE),
+    fillOpacity = 0.55,
+    color = "#4d4d4d",
+    weight = 0.4,
+    smoothFactor = 0.2,
+    popup = ~paste0(
+      "<b>Flood Zone:</b> ", FLD_ZONE, "<br>",
+      "<b>Zone Subtype:</b> ", ifelse(is.na(ZONE_SUBTY), "N/A", ZONE_SUBTY), "<br>",
+      "<b>SFHA:</b> ", ifelse(is.na(SFHA_TF), "N/A", SFHA_TF)
+    ),
+    label = ~paste0("Flood Zone: ", FLD_ZONE)
+  ) %>%
+  addPolygons(
+    data = little_rock,
+    fill = FALSE,
+    color = "#111111",
+    weight = 2.5,
+    opacity = 1,
+    label = ~paste0(NAME, " city boundary")
+  ) %>%
+  addLegend(
+    position = "bottomright",
+    pal = pal_flood,
+    values = flood_zones_lr$FLD_ZONE,
+    title = "FEMA Flood Zone",
+    opacity = 1
+  ) %>%
+  fitBounds(
+    lng1 = as.numeric(bb["xmin"]),
+    lat1 = as.numeric(bb["ymin"]),
+    lng2 = as.numeric(bb["xmax"]),
+    lat2 = as.numeric(bb["ymax"])
+  )
+```
+
+## Community and Public Facilities Need
+Survey respondents rated all **12 facility types as predominantly "High Need,"** indicating widespread gaps in Little Rock's community infrastructure. The highest-priority facilities include **homeless shelters (192 High Need responses)**, **youth centers (173)**, and **facilities for abused or neglected children (163)**, reflecting critical needs for vulnerable populations. **Childcare facilities (153), parks and recreational facilities (125), senior centers (126),** facilities for **persons living with disabilities (139), and community centers (122) also received strong High Need ratings,** demonstrating demand for expanded services across age groups and accessibility levels. Healthcare facilities (116), residential treatment centers (109), improved accessibility of public buildings (93), and fire stations/equipment (88) rounded out the list, with all receiving more High Need responses than Low Need or Medium Need combined. 
+```{r Community_Facilities_Table, message=FALSE, warning=FALSE}
+community_facility_questions <- c(
+  "Homeless shelters",
+  "Youth centers",
+  "Facilities for abused/neglected children",
+  "Childcare facilities",
+  "Parks and recreational facilities",
+  "Senior centers",
+  "Community centers",
+  "Facilities for persons living with Disabilities",
+  "Healthcare facilities",
+  "Residential treatment centers",
+  "Improved accessibility of Public buildings",
+  "Fire Stations/equipment"
+)
+
+community_facility_summary <- survey_data %>%
+  select(all_of(community_facility_questions)) %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = "Question",
+    values_to = "Response"
+  ) %>%
+  mutate(
+    Response = as.character(Response),
+    Response = trimws(Response),
+    Response = case_when(
+      is.na(Response) | Response == "" | Response == "NA" ~ "Missing",
+      grepl("Don.?t Know", Response, ignore.case = TRUE) ~ "Don't Know",
+      TRUE ~ Response
+    ),
+    Response = factor(
+      Response,
+      levels = c("Low Need", "Medium Need", "High Need", "Don't Know", "Missing")
+    )
+  ) %>%
+  count(Question, Response, .drop = FALSE) %>%
+  pivot_wider(
+    names_from = Response,
+    values_from = n,
+    values_fill = 0
+  ) %>%
+  select(Question, `Low Need`, `Medium Need`, `High Need`, `Don't Know`, Missing)
+
+datatable(
+  community_facility_summary,
+  filter = "top",
+  options = list(
+    pageLength = 15,
+    scrollX = TRUE,
+    autoWidth = TRUE
+  ),
+  caption = "Community Facilities - Response Summary"
+)
+```
+
+## Human and Public Services Need
+Survey responses indicate especially strong demand for special needs population services across multiple areas.The highest-rated needs were **homelessness services (216 High Need responses)**, **mental health services (202)**, **substance abuse services (190)**, **services for youth aging out of foster care (179)**, **youth services (178)**, **services for survivors of domestic violence (172)**, **childcare services (171)**, **food banks (171)**, and **transportation services (171)**. Other services also received substantial High Need ratings, **including employment services (158)**, **healthcare services (157)**, **utility assistance (157)**, **fair housing activities (155)**, **rental assistance (151)**, **senior services (147)**, **home-buyer education (144)**, **tenant/landlord counseling (142)**, and **veterans services (137)**,suggesting demand for both direct supportive services and housing-related health protections.
+
+
+```{r Human_Public_Table}
+special_needs_service_questions <- c(
+  "Mental health services",
+  "Homelessness services",
+  "Substance abuse services",
+  "Services for Youth Aging out of Foster Care",
+  "Services for survivors of domestic violence",
+  "Youth services",
+  "Fair housing activities",
+  "Transportation services",
+  "Eviction Prevention",
+  "Tenant/Landlord counseling",
+  "Food banks",
+  "Employment services",
+  "Childcare services",
+  "Home-buyer education",
+  "Senior services",
+  "Veterans Services",
+  "Rental Assistance2",
+  "Utility Assistance",
+  "Healthcare services",
+  "Crime awareness education",
+  "Mitigation of asbestos hazards",
+  "Reduction of lead-based paint hazards",
+  "Mitigation of radon hazards"
+)
+
+special_needs_service_summary <- survey_data %>%
+  select(all_of(special_needs_service_questions)) %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = "Question",
+    values_to = "Response"
+  ) %>%
+  mutate(
+    Question = recode(
+      Question,
+      "Mitigation of radon hazards" = "Mitigation of radon hazards",
+      "Rental Assistance2" = "Rental Assistance"
+    ),
+    Response = as.character(Response),
+    Response = trimws(Response),
+    Response = case_when(
+      is.na(Response) | Response == "" | Response == "NA" ~ "Missing",
+      grepl("Don.?t Know", Response, ignore.case = TRUE) ~ "Don't Know",
+      TRUE ~ Response
+    ),
+    Response = factor(
+      Response,
+      levels = c("No Need", "Low Need", "Medium Need", "High Need", "Don't Know", "Missing")
+    )
+  ) %>%
+  count(Question, Response, .drop = FALSE) %>%
+  pivot_wider(
+    names_from = Response,
+    values_from = n,
+    values_fill = 0
+  ) %>%
+  select(Question, `No Need`, `Low Need`, `Medium Need`, `High Need`, `Don't Know`, Missing)
+
+datatable(
+  special_needs_service_summary,
+  filter = "top",
+  options = list(
+    pageLength = 25,
+    scrollX = TRUE,
+    autoWidth = TRUE
+  ),
+  caption = "Human and Public Services Need - Response Summary"
+)
+```
+### Available Beds Decreased from 2021-2024
+Survey findings align with documented reductions in homeless housing capacity in the Little Rock/Central Arkansas Continuum of Care. Between 2021 and 2024, the regional homeless response system experienced a sharp decline in total available beds, falling from **1,608 year-round beds in 2021** to **1,107 beds in 2024—a loss of 501 beds**, or 31% of total capacity. While emergency shelter beds declined modestly from 641 to 469 beds, the most significant losses occurred in permanent housing inventory: total permanent housing fell from **788 beds in 2021 to just 402 beds in 2024**, including the complete elimination of rapid re-housing (237 beds in 2021, zero in 2024) and a drop in permanent supportive housing from 551 to 402 beds. Transitional housing also increased slightly from **179 to 236 beds**, suggesting a shift toward shorter-term crisis interventions rather than long-term housing solutions. These capacity reductions help explain why survey respondents identified homelessness services (216 High Need responses), rental assistance (151), eviction prevention (135), and tenant/landlord counseling (142) as urgent priorities.
+![](coc_2021_summary.png)
+
+![](coc_2024_summary.png)
